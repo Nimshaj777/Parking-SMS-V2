@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Parking SMS Automator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .vehicle-form { 
+            margin-bottom: 20px; 
+        }
+        input, button { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 5px 0; 
+        }
+        .vehicle-list { 
+            list-style: none; 
+            padding: 0; 
+            margin-bottom: 20px;
+        }
+        .vehicle-item { 
+            padding: 12px; 
+            border-bottom: 1px solid #ddd; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+        .vehicle-info { 
+            flex: 1; 
+            margin-right: 10px; 
+        }
+        .status { 
+            margin-left: 10px; 
+            font-weight: bold;
+        }
+        .sent { color: green; }
+        .pending { color: orange; }
+        .button-group button { 
+            margin: 0 5px; 
+            padding: 5px 10px; 
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+        }
+        .current-vehicle { 
+            background-color: #f0f8ff !important;
+        }
+        .countdown {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Parking SMS Automator</h1>
+        <div class="vehicle-form">
+            <input type="text" id="vehicleIdentifier" placeholder="Owner name/Flat number">
+            <input type="text" id="vehicleMessage" placeholder="Enter full message (e.g. AUH14 47402 E21 6)">
+            <button onclick="addVehicle()">Add Vehicle</button>
+        </div>
+        <ul class="vehicle-list" id="vehicleList"></ul>
+        <button onclick="startSending()">Start Sending SMS</button>
+        <p id="status"></p>
+        <div class="countdown" id="countdown" style="display: none;"></div>
+    </div>
+
+    <script>
+        let vehicles = JSON.parse(localStorage.getItem('vehicles')) || [];
+        let sendingInProgress = false;
+
+        function updateList() {
+            const list = document.getElementById('vehicleList');
+            list.innerHTML = '';
+            vehicles.forEach((v, index) => {
+                const item = document.createElement('li');
+                item.className = 'vehicle-item';
+                item.innerHTML = `
+                    <div class="vehicle-info">
+                        ${index + 1}. <strong>${v.identifier}</strong> - ${v.message}
+                    </div>
+                    <div class="button-group">
+                        <button onclick="editVehicle(${index})">Edit</button>
+                        <button onclick="deleteVehicle(${index})">Delete</button>
+                    </div>
+                    <div class="status ${v.status}">${v.status || ''}</div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function addVehicle() {
+            const identifier = document.getElementById('vehicleIdentifier').value.trim();
+            const message = document.getElementById('vehicleMessage').value.trim();
+            
+            if (!identifier || !message) {
+                alert('Both owner/flat and message are required');
+                return;
+            }
+
+            vehicles.push({ 
+                identifier: identifier,
+                message: message,
+                status: ''
+            });
+            localStorage.setItem('vehicles', JSON.stringify(vehicles));
+            updateList();
+            document.getElementById('vehicleIdentifier').value = '';
+            document.getElementById('vehicleMessage').value = '';
+        }
+
+        function editVehicle(index) {
+            if (sendingInProgress) return;
+            
+            const vehicle = vehicles[index];
+            const newIdentifier = prompt('Edit owner/flat:', vehicle.identifier);
+            const newMessage = prompt('Edit message:', vehicle.message);
+            
+            if (newIdentifier !== null && newMessage !== null) {
+                vehicles[index] = { 
+                    identifier: newIdentifier,
+                    message: newMessage,
+                    status: vehicle.status 
+                };
+                localStorage.setItem('vehicles', JSON.stringify(vehicles));
+                updateList();
+            }
+        }
+
+        function deleteVehicle(index) {
+            if (sendingInProgress) return;
+            if (confirm('Are you sure you want to delete this entry?')) {
+                vehicles.splice(index, 1);
+                localStorage.setItem('vehicles', JSON.stringify(vehicles));
+                updateList();
+            }
+        }
+
+        async function startSending() {
+            if (sendingInProgress || vehicles.length === 0) return;
+            sendingInProgress = true;
+            
+            const status = document.getElementById('status');
+            const countdown = document.getElementById('countdown');
+            status.textContent = 'Sending SMS...';
+            countdown.style.display = 'block';
+
+            for (let i = 0; i < vehicles.length; i++) {
+                if (!sendingInProgress) break;
+
+                const vehicle = vehicles[i];
+                const vehicleItem = document.querySelectorAll('.vehicle-item')[i];
+                
+                // Highlight current vehicle
+                vehicleItem.classList.add('current-vehicle');
+                
+                // Update status to pending
+                vehicle.status = 'pending';
+                updateList();
+
+                // Show countdown
+                countdown.textContent = `Next SMS in 10 seconds...`;
+
+                // Open SMS composer
+                const smsUrl = `sms:3009?body=${encodeURIComponent(vehicle.message)}`;
+                window.location.href = smsUrl;
+
+                // Wait for 10 seconds with countdown
+                for (let t = 10; t >= 0; t--) {
+                    countdown.textContent = `Returning to app in ${t} seconds...`;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+
+                // Update status to sent
+                vehicle.status = 'sent';
+                updateList();
+                
+                // Remove highlight
+                vehicleItem.classList.remove('current-vehicle');
+            }
+
+            sendingInProgress = false;
+            countdown.style.display = 'none';
+            status.textContent = 'SMS sending completed!';
+        }
+
+        // Stop sending if user navigates away
+        window.addEventListener('beforeunload', () => {
+            sendingInProgress = false;
+        });
+
+        updateList();
+    </script>
+</body>
+</html>
